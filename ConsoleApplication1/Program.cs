@@ -2,16 +2,18 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Data.SqlTypes;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32;
-
+using System.Management;
 namespace ConsoleApplication1
 {
     class Program
@@ -59,69 +61,91 @@ namespace ConsoleApplication1
         }
 
 
+        public static void Shutdown()
+        {
+            ManagementBaseObject mboShutdown = null;
+            ManagementClass mcWin32 = new ManagementClass("Win32_OperatingSystem");
+            mcWin32.Get();
+
+            // You can't shutdown without security privileges
+            mcWin32.Scope.Options.EnablePrivileges = true;
+            ManagementBaseObject mboShutdownParams =
+                mcWin32.GetMethodParameters("Win32Shutdown");
+
+            // Flag 1 means we want to shut down the system. Use "2" to reboot.
+            mboShutdownParams["Flags"] = "1";
+            mboShutdownParams["Reserved"] = "0";
+            foreach (ManagementObject manObj in mcWin32.GetInstances())
+            {
+                mboShutdown = manObj.InvokeMethod("Win32Shutdown",
+                    mboShutdownParams, null);
+            }
+        }
 
         static void Main(string[] args)
         {
 
-
-
-            //  string[] split = s.Split(',');
-            //Console.WriteLine(a);
-            //using (StreamWriter sw = new StreamWriter("1.txt", true))
-            //{
-            //    sw.WriteLine(s);
-
-            //}
-            /* string s_;
-             using (StreamReader str = new StreamReader("1.txt"))
-             {
-                 StringBuilder strb = new StringBuilder();
-                 s_ = str.ReadToEnd();
-
-             }
-             string[] app = s_.Split(',');
-             Thread t = new Thread(delegate ()
-             {
-
-             });          
-             Console.WriteLine("Success!");*/
-            //Console.WriteLine(s);
-
-            //Console.WriteLine(LevensteinImplementation("ABCDEF", "ABGIK"));
-
-
-            //CheckForUnique(Set_DNA(10000).Split(','), Set_DNA(10000).Split(','));
-
-
-            // ToWritetoFile(Set_DNA(1000), nameOfSource);
-            // ReSharper disable once InconsistentNaming
             List<Thread> threads = new List<Thread>();
-        
-                Thread t = new Thread(delegate()
-                {
-                    Person Egor = new Person("Egor", ".txt", 400000);
-                    Egor.SetDna();
-                    Person anotherPerson = new Person("AnotherPerson", ".txt", 400000);
-                    anotherPerson.SetDna();
-                    CheckForUnique(Egor, anotherPerson);
-                });
-                threads.Add(t);
-            
-          threads.ForEach(f=>f.Start());
+            Person Egor = new Person("Egor", ".txt", 4000000);
+            Person anotherPerson = new Person("AnotherPerson", ".txt", 4000000);
+            Thread t = new Thread(delegate ()
+            {
+                Egor.SetDna();
+                Console.WriteLine("----------------------------------------------------");
+                anotherPerson.SetDna();
+                CheckForUnique(Egor, anotherPerson);
+            });
+            threads.Add(t);
+
+
+            Parallel.For(0, 1, (i) =>
+            {
+                threads.ForEach(f => f.Start());
+                threads.ForEach(f => f.Join());
+                //Thread checkForUniqueThread = new Thread(() => CheckForUnique(Egor, anotherPerson));
+                //checkForUniqueThread.Start();
+                //checkForUniqueThread.Join();
+            });
+
+            Console.WriteLine("Всё прошло успешно!");
+            Console.WriteLine("WE ARE SHUTTING DOWN");
+            Console.WriteLine("------------------------------");
+            //Shutdown();
+            Console.WriteLine("------------------------------");
         }
 
         static void CheckForUnique(Person source, Person compared)
         {
+            Stopwatch timer = new Stopwatch();
+            timer.Start();
             string[] sourceDna = SplitDna(ReadFromFile(source));
             string[] comparedDna = SplitDna(ReadFromFile(compared));
-            int[] arr = new int[sourceDna.Length];
+
             for (int i = 0; i < sourceDna.Length; i++)
             {
-                arr[i] = LevensteinImplementation(sourceDna[i], comparedDna[i]);
                 Console.WriteLine($@"sourceDna = {sourceDna[i]} , comparedDna = { comparedDna[i]}");
-                GetProc(sourceDna[i].Length, arr[i] + ".01");
+                GetProc(sourceDna[i].Length, LevensteinImplementation(sourceDna[i], comparedDna[i]) + ".01");
             }
-            Console.WriteLine("Сходство между {0} и {1}  = {2}", source.NameOfPerson, compared.NameOfPerson, Procenty.Average());
+            Console.WriteLine("Сходство между {0} и {1}  = {2} % ", source.NameOfPerson, compared.NameOfPerson, Procenty.Average());
+            using (StreamWriter sw = new StreamWriter(AppDomain.CurrentDomain.BaseDirectory + "Results.txt", true))
+            {
+                timer.Stop();
+                string resultString =
+                    $"| Date  - {DateTime.Now} , Прошло секунд - {timer.ElapsedMilliseconds / 1000} , {(timer.ElapsedMilliseconds / 1000) / 60} мин " +
+                    $"Average - {Procenty.Average()} %  , Count of DNA - {Procenty.Count}|";
+                
+                string upstr = "";
+               
+                for (int i = 0; i < resultString.Length; i++)
+                {
+                    upstr += "-";
+                    Console.WriteLine(upstr);
+                }
+                sw.WriteLine(upstr);
+                sw.WriteLine(resultString);
+                sw.WriteLine(upstr);
+            }
+
         }
         public static List<double> Procenty = new List<double>();
         static void GetProc(int source, string compared)
@@ -132,10 +156,9 @@ namespace ConsoleApplication1
             var ass = a.ToString(CultureInfo.InvariantCulture);
             if (!a.ToString(CultureInfo.InvariantCulture).StartsWith("1"))
             {
-                Console.WriteLine($"Сходство = {(floatCompared / source) * 100}");
+                Console.WriteLine($"Сходство = {100.00 - (floatCompared / source) * 100}");
                 // ReSharper disable once EmptyStatement
-
-                Procenty.Add((floatCompared / source) * 100);
+                Procenty.Add(100.00 - (floatCompared / source) * 100);
             }
             else
             {
@@ -143,15 +166,15 @@ namespace ConsoleApplication1
                 Procenty.Add(0.0);
             }
         }
-        static string[] SplitDna(string dna)
+        static string[] SplitDna(StringBuilder dna)
         {
-            return dna.Split(',');
+            return dna.ToString().Split(',');
         }
-        static string ReadFromFile(Person p)
+        static StringBuilder ReadFromFile(Person p)
         {
             using (StreamReader str = new StreamReader(p.NameOfPerson + p.Extension))
             {
-                return str.ReadToEnd();
+                return new StringBuilder(str.ReadToEnd());
             }
         }
     }
@@ -176,62 +199,52 @@ namespace ConsoleApplication1
         public string Extension { get; set; }
         private string Set_DNA(int count_of_Dna)
         {
-
-            string s = "";
+            StringBuilder sb = new StringBuilder();
             Random rnd = new Random();
             List<int> a = new List<int>();
-            Parallel.For(0, count_of_Dna, (i) =>
+            for (int i = 0; i < count_of_Dna; i++)
             {
                 a.Add(rnd.Next(0, 4));
-                Console.WriteLine(i);
-            });
+            }
 
             for (int item = 0; item < a.Count; item++)
             {
-                if (item % 4 == 0 && item != 0)
+
+                switch (a.ElementAt(item))
                 {
-                    Console.WriteLine(item);
-                    if (a.ElementAt(item) == 0)
-                    {
-                        s += "А";
-                    }
-                    if (a.ElementAt(item) == 1)
-                    {
-                        s += "Г";
+                    case 0:
+                        {
+                            sb.Append('А');
+                            break;
+                        }
+                    case 1:
+                        {
+                            sb.Append('Г');
+                            break;
+                        }
+                    case 2:
+                        {
+                            sb.Append('Т');
+                            break;
+                        }
+                    case 3:
+                        {
+                            sb.Append('Ц');
+                            break;
+                        }
 
-                    }
-                    if (a.ElementAt(item) == 2)
-                    {
-                        s += "Ц";
-
-                    }
-                    if (a.ElementAt(item) == 3)
-                    {
-                        s += "Т";
-                    }
-                    s += ",";
                 }
-                else
+                switch (item % 4 == 0 && item != 0)
                 {
-
-                    if (a.ElementAt(item) == 0)
-                    {
-                        s += "А";
-                    }
-                    else if (a.ElementAt(item) == 1)
-                    {
-                        s += "Г";
-                    }
-                    else if (a.ElementAt(item) == 2)
-                    {
-                        s += "Ц";
-                    }
-                    else if (a.ElementAt(item) == 3)
-                    {
-                        s += "Т";
-                    }
+                    case true:
+                        {
+                            sb.Append(',');
+                            break;
+                        }
                 }
             }
+            string s = sb.ToString();
+            Console.WriteLine(s);
             ToWritetoFile(s, NameOfPerson, Extension);
             return s;
         }
