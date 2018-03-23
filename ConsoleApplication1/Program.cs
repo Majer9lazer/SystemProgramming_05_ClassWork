@@ -1,19 +1,13 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Data.SqlTypes;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Linq.Expressions;
-using System.Net.Sockets;
-using System.Runtime.InteropServices;
+using System.Management;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Win32;
-using System.Management;
 namespace ConsoleApplication1
 {
     class Program
@@ -21,7 +15,6 @@ namespace ConsoleApplication1
         public static long FibRecursive(long n)
             => n == 1 ? 1 :
             (n == 0 ? 0 : (FibRecursive(n - 1) + FibRecursive(n - 2)));
-        static long a;
         static int LevensteinImplementation(string first, string second)
         {
             int firstLength = first.Length;
@@ -84,130 +77,123 @@ namespace ConsoleApplication1
 
         static void Main(string[] args)
         {
-
-            List<Thread> threads = new List<Thread>();
-            Person Egor = new Person("Egor", ".txt", 4000000);
-            Person anotherPerson = new Person("AnotherPerson", ".txt", 4000000);
-            Thread t = new Thread(delegate ()
+            Person Egor = new Person("Egor", ".txt", 40000000);
+            Person anotherPerson = new Person("AnotherPerson", ".txt", 40000000);
+            try
             {
-                Egor.SetDna();
-                Console.WriteLine("----------------------------------------------------");
-                anotherPerson.SetDna();
-                CheckForUnique(Egor, anotherPerson);
-            });
-            threads.Add(t);
-
-
-            Parallel.For(0, 1, (i) =>
+                for (int i = 0; i < 10; i++)
+                {
+                    Egor.SetDna();
+                    anotherPerson.SetDna();
+                    CheckForUnique(Egor, anotherPerson, i);
+                }
+            }
+            catch (Exception e)
             {
-                threads.ForEach(f => f.Start());
-                threads.ForEach(f => f.Join());
-                //Thread checkForUniqueThread = new Thread(() => CheckForUnique(Egor, anotherPerson));
-                //checkForUniqueThread.Start();
-                //checkForUniqueThread.Join();
-            });
-
+                Console.WriteLine(e);
+           
+            }
             Console.WriteLine("Всё прошло успешно!");
             Console.WriteLine("WE ARE SHUTTING DOWN");
-            Console.WriteLine("------------------------------");
             //Shutdown();
-            Console.WriteLine("------------------------------");
+            Console.ReadLine();
         }
 
-        static void CheckForUnique(Person source, Person compared)
+        static void CheckForUnique(Person source, Person compared, int resultNumber)
         {
             Stopwatch timer = new Stopwatch();
             timer.Start();
-            string[] sourceDna = SplitDna(ReadFromFile(source));
-            string[] comparedDna = SplitDna(ReadFromFile(compared));
-
-            for (int i = 0; i < sourceDna.Length; i++)
+            string[] sourceDna = (ReadFromFile(source)).ToString().Split(',').AsParallel().ToArray();
+            string[] comparedDna = (ReadFromFile(compared)).ToString().Split(',').AsParallel().ToArray();
+            List<double> percents = new List<double>();
+            Thread t = new Thread(delegate ()
             {
-                Console.WriteLine($@"sourceDna = {sourceDna[i]} , comparedDna = { comparedDna[i]}");
-                GetProc(sourceDna[i].Length, LevensteinImplementation(sourceDna[i], comparedDna[i]) + ".01");
-            }
-            Console.WriteLine("Сходство между {0} и {1}  = {2} % ", source.NameOfPerson, compared.NameOfPerson, Procenty.Average());
-            using (StreamWriter sw = new StreamWriter(AppDomain.CurrentDomain.BaseDirectory + "Results.txt", true))
+                for (int i = 0; i < sourceDna.Length; i++)
+                {
+                    GetProc(sourceDna[i].Length, LevensteinImplementation(sourceDna[i], comparedDna[i]) + ".00000001", ref percents);
+                }
+            })
+            { Priority = ThreadPriority.AboveNormal };
+            t.Start();
+            t.Join();
+            using (StreamWriter sw = new StreamWriter(AppDomain.CurrentDomain.BaseDirectory + "ResultsTest.txt", true))
             {
                 timer.Stop();
                 string resultString =
-                    $"| Date  - {DateTime.Now} , Прошло секунд - {timer.ElapsedMilliseconds / 1000} , {(timer.ElapsedMilliseconds / 1000) / 60} мин " +
-                    $"Average - {Procenty.Average()} %  , Count of DNA - {Procenty.Count}|";
-                
+                    $"|Номер результата :{resultNumber} , Date  - {DateTime.Now} ,Источник - {source.NameOfPerson} , Сравниваемый - {compared.NameOfPerson} , Прошло  - {timer.ElapsedMilliseconds} миллисекунд, {timer.ElapsedMilliseconds / 1000.00} сек , {(timer.ElapsedMilliseconds / 1000.00) / 60.00} мин " +
+                    $"Average - {percents.Where(f => f != double.NegativeInfinity).Average()} %  , Count of DNA - {percents.Count}|";
                 string upstr = "";
-               
-                for (int i = 0; i < resultString.Length; i++)
+                Thread resThread = new Thread(delegate ()
                 {
-                    upstr += "-";
-                    Console.WriteLine(upstr);
-                }
+                    Parallel.For(0, resultString.Length, (i) =>
+                    {
+                        upstr += "-";
+                    });
+                })
+                { Priority = ThreadPriority.AboveNormal };
+                resThread.Start();
+                resThread.Join();
                 sw.WriteLine(upstr);
                 sw.WriteLine(resultString);
                 sw.WriteLine(upstr);
+                Console.WriteLine(upstr + "\n" + resultString + "\n" + upstr);
             }
+        }
 
-        }
-        public static List<double> Procenty = new List<double>();
-        static void GetProc(int source, string compared)
+        static void GetProc(int source, string compared, ref List<double> procenty)
         {
-            var l = compared.Substring(0, compared.IndexOf(".", StringComparison.Ordinal));
             double floatCompared = Convert.ToDouble(compared.Replace(".", ","));
-            Double a = (floatCompared / source);
-            var ass = a.ToString(CultureInfo.InvariantCulture);
-            if (!a.ToString(CultureInfo.InvariantCulture).StartsWith("1"))
+            double a = (floatCompared / source);
+            switch (a.ToString(CultureInfo.InvariantCulture).StartsWith("1"))
             {
-                Console.WriteLine($"Сходство = {100.00 - (floatCompared / source) * 100}");
-                // ReSharper disable once EmptyStatement
-                Procenty.Add(100.00 - (floatCompared / source) * 100);
-            }
-            else
-            {
-                Console.WriteLine($"Сходство = {0}");
-                Procenty.Add(0.0);
+                case true:
+                    {
+                        procenty.Add(0.00);
+                        break;
+                    }
+                case false:
+                    {
+                        procenty.Add(100.00 - (floatCompared / source) * 100);
+                        break;
+                    }
             }
         }
-        static string[] SplitDna(StringBuilder dna)
-        {
-            return dna.ToString().Split(',');
-        }
+
         static StringBuilder ReadFromFile(Person p)
         {
             using (StreamReader str = new StreamReader(p.NameOfPerson + p.Extension))
             {
-                return new StringBuilder(str.ReadToEnd());
+                StringBuilder bs= new StringBuilder(str.ReadToEnd());
+                return bs;
             }
         }
     }
 
     class Person
     {
-        private Person() { }
-        public Person(string NameOfPerson, string extensionOfFile, int count_of_Dna)
+        public Person(string nameOfPerson, string extensionOfFile, int countOfDna)
         {
-            this.NameOfPerson = NameOfPerson;
+            this.NameOfPerson = nameOfPerson;
             Extension = extensionOfFile;
-            this.count_of_Dna = count_of_Dna;
+            this.CountOfDna = countOfDna;
         }
-
-        public int count_of_Dna { get; set; }
+        public int CountOfDna { get; set; }
         public void SetDna()
         {
-            DNA_Code = Set_DNA(count_of_Dna);
+            Set_DNA(CountOfDna);
         }
-        public string DNA_Code { get; set; }
         public string NameOfPerson { get; set; }
         public string Extension { get; set; }
-        private string Set_DNA(int count_of_Dna)
+        private void Set_DNA(int countOfDna)
         {
             StringBuilder sb = new StringBuilder();
             Random rnd = new Random();
-            List<int> a = new List<int>();
-            for (int i = 0; i < count_of_Dna; i++)
+            int[] a = new int[countOfDna];
+            for (int i = 0; i < countOfDna; i++)
             {
-                a.Add(rnd.Next(0, 4));
+                a[i] = rnd.Next(0, 4);
             }
-
-            for (int item = 0; item < a.Count; item++)
+            for (int item = 0; item < a.Length; item++)
             {
 
                 switch (a.ElementAt(item))
@@ -243,21 +229,15 @@ namespace ConsoleApplication1
                         }
                 }
             }
-            string s = sb.ToString();
-            Console.WriteLine(s);
-            ToWritetoFile(s, NameOfPerson, Extension);
-            return s;
+            ToWritetoFile(sb.ToString(), NameOfPerson, Extension);
         }
-
-
-
         public void ToWritetoFile(string source, string nameOfFile, string extension)
         {
             try
             {
                 using (StreamWriter stream = new StreamWriter(AppDomain.CurrentDomain.BaseDirectory + nameOfFile + extension, true))
                 {
-                    stream.WriteLine(source);
+                    stream.Write(source + ",");
                     Console.WriteLine("Запись прошла успешно");
                 }
             }
